@@ -29,3 +29,7 @@ $
   * Under `Health Monitors` put your newly created health monitor to `Active`
   * Press `Update`
 1. Press `Update` until `Availability` is `Available (Enabled) - The pool is available`
+
+## TODO
+* Maybe use [Nagios::NRPE](https://github.com/andreas-marschke/nagios-nrpe/blob/master/lib/Nagios/NRPE/Client.pm)? Might be an unnecessary dependency though, but nicer code!
+* Support non-SSLed NRPE requests?
