@@ -1,0 +1,97 @@
+#!/usr/bin/env perl
+# Copyright (c) 2013-, Simon Lundström <simlu@su.se>, IT Services, Stockholm University
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# Redistributions of source code must retain the above copyright notice, this
+# list of conditions and the following disclaimer.
+#
+# Redistributions in binary form must reproduce the above copyright notice,
+# this list of conditions and the following disclaimer in the documentation
+# and/or other materials provided with the distribution.
+#
+# Neither the name of Stockholm University nor the names of its contributors
+# may be used to endorse or promote products derived from this software without
+# specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+use strict;
+use warnings;
+use IO::Socket::SSL;
+use Digest::CRC 'crc32';
+use Getopt::Long;
+
+# A Perl rewrite of http://blog.cactiusers.org/2012/02/18/nagios-nrpe-client-via-php/
+# Main reason for writing this is to be able to use NRPE checks as healthchecks
+# on a F5 BIG-IP loadbalancers.
+
+my $host = "localhost";
+my $port = 5666;
+my $check;
+
+my $help = 0;
+
+sub usage {
+  print STDERR <<EOF;
+Usage:
+$0 [options]
+
+ Options:
+   --host            Hostname to run NRPE check against. Optional, default "$host"
+   --port            Port that NRPE runs on. Optional, default: "$port"
+   --check           NRPE check to run. Required.
+   --help            this
+EOF
+  exit 1;
+}
+
+GetOptions("host=s"       => \$host,
+           "port=i"       => \$port,
+           "check=s"      => \$check,
+           "help|?"       => \$help) or usage();
+
+usage() if (!defined $check || $help);
+
+my $sock = IO::Socket::SSL->new(
+  PeerHost => $host,
+  PeerPort => $port,
+  # NRPE only supports ADH, but let's keep it safer.
+  # Maybe we should only do RC4 but that's "broken" too now so..
+  SSL_cipher_list => '-ALL:ADH:-EXP:-LOW:-3DES:-SEED@STRENGTH',
+) or die "Can't connect or error in SSL handshake: $!,$SSL_ERROR";
+
+# Create the NRPE request packet
+my $data = $check;
+for (my $i = length($data); $i < 1024; $i++) {
+  $data .= chr(0x0);
+}
+$data .= "SR";
+$data = pack("n", 2324) . $data;
+my $packet = join('', map { chr } 0x00,0x02,0x00,0x01);
+my $crc = crc32($packet . join('', map (chr, (0x00, 0x00, 0x00, 0x00))) . $data);
+$packet .= pack("N", $crc) . $data;
+
+my $pretty_packet = $packet;
+# FIXME HALP! I suck at this
+$pretty_packet =~ s/(.)/sprintf('\x%02X', ord($1))/ge;
+print "Request in hex: $pretty_packet\n";
+
+print $sock $packet;
+my $reply = <$sock>;
+# Strip out everything except the reply text
+$reply = substr($reply, 10, -995)."\n";
+print "Reply to match for: $reply";
+print "REMEMBER that there are random and NULL characters before and after the text above in the reply.\n";
+close($sock);
