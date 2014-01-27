@@ -5,6 +5,7 @@ This script is a Perl "port" of http://blog.cactiusers.org/2012/02/18/nagios-nrp
 
 ## USAGE
 
+So for an example, using [nagios-plugin-check\_amqp](https://github.com/stockholmuniversity/nagios-plugin-check_amqp):
 ```sh
 $ ./make_nrpe_request --nrpe-check check_amqp
 Request in hex: \x00\x02\x00\x01\xEF[...]\x00\x53\x52
